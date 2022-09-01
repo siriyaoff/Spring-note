@@ -1520,7 +1520,7 @@ public class SpringConfig {
 
 ### 스프링 데이터 JPA의 제공 클래스
 
-![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(24).png))
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(24).png)
 
 - 제공 기능
     - interface를 통한 기본적인 CRUD
@@ -1528,3 +1528,111 @@ public class SpringConfig {
     - 페이징 기능
 - 기본적으로 JPA, 스프링 데이터 JPA를 사용하고, 복잡한 동적 쿼리는 Querydsl 라이브러리 사용
     - 커버가 안될 경우 Native 쿼리 또는 JdbcTemplate 사용
+
+---
+
+> **섹션 7. AOP**
+> 
+
+## AOP가 필요한 상황
+
+- 모든 메소드의 호출 시간을 측정하고 싶을 때
+
+```java
+public Long join(Member member) {
+    long start = System.currentTimeMillis();
+
+    try{
+        validateDuplicateMember(member);
+        memberRepository.save(member);
+        return member.getId();
+    } finally {
+        long finish = System.currentTimeMillis();
+        long timeMs = finish - start;
+        System.out.println("join = " + timeMs + "ms");
+    }
+}
+public List<Member> findMembers() {
+    long start = System.currentTimeMillis();
+    try {
+        return memberRepository.findAll();
+    } finally {
+        long finish = System.currentTimeMillis();
+        long timeMs = finish - start;
+        System.out.println("findMembers " + timeMs + "ms");
+    }
+}
+```
+
+- `try...finally`로 일일히 감싸고, `start`, `finish`, `timeMs`로 시간 계산
+
+### 문제
+
+- 공통 관심 사항(cross-cutting concern) : 앱 전반에 걸쳐 필요한 기능(transaction, auth 등)
+    - 시간 측정 기능 : 공통 관심 사항
+- 핵심 관심 사항(core concern) : 핵심 비즈니스 로직
+- 시간 측정 로직과 비즈니스 로직이 섞여서 유지보수가 어려움
+- 시간 측정 로직을 별도의 공통 로직으로 만들기가 매우 어렵고, 수정해야 할 경우 모두 수동으로 변경해야 함
+
+## AOP 적용
+
+- AOP(Aspect Oriented Programming) : cross-cutting concern, core concern을 분리함
+
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(25).png)
+
+- 시간 측정 로직을 한 군데에 모아놓고, 적용할 서비스를 지정하면 적용됨
+
+`hello.hellospring.app` 패키지 추가 후 `TimeTraceApp` 클래스 추가
+
+```java
+@Aspect
+@Component
+public class TimeTraceAop {
+    @Around("execution(* hello.hellospring..*(..))")
+    public Object execute(ProceedingJoinPoint joinPoint) throws Throwable {
+        long start = System.currentTimeMillis();
+        System.out.println("START: " + joinPoint.toString());
+        try {
+            return joinPoint.proceed();
+        } finally {
+            long finish = System.currentTimeMillis();
+            long timeMs = finish - start;
+            System.out.println("END: " + joinPoint.toString() + " " + timeMs + "ms");
+        }
+    }
+}
+```
+
+- SpringConfig에 Bean으로 등록하거나 `@Component` 어노테이션 붙이면 springbean에 등록됨
+- `MemberService`에 추가했던 시간 측정 로직은 다시 지우면 됨
+
+### 해결
+
+- 핵심 관심 사항과 공통 관심 사항을 분리함
+- 시간 측정 로직을 별도의 공통 로직으로 만듦
+    - 핵심 관심 사항을 깔끔하게 유지 가능
+    - 유지보수가 쉬움(수정, 적용 대상 선택 등)
+        - `"execution(* hello.hellospring.service..*(..))"`과 같이 원하는 범위 설정 가능  
+        (패키지 단위로 많이 함)
+
+### 스프링의 AOP 동작 방식 설명
+
+- AOP 적용 전 의존관계
+    
+    ![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(26).png)
+    
+- AOP 적용 후 의존관계
+    
+    ![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(27).png)
+    
+    - AOP가 적용되어 있다면 프록시(가짜) memberService를 만듦
+    - spring container에서는 가짜 spring bean이 실행된 다음 `joinPoint.proceed()`메소드를 통해 실제 spring bean이 호출됨
+        - `memberService.getClass()`로 확인 가능
+- AOP 적용 결과
+    - 적용 전
+        
+        ![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(28).png)
+        
+    - 적용 후
+        
+        ![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap1%20(29).png)
