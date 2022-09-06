@@ -118,3 +118,223 @@ public class MemberServiceImpl implements MemberService {
 - 구현체가 하나일 경우 interface 이름 뒤에 Impl 붙여서 명명
 
 ## 회원 도메인 실행과 테스트
+
+- `hello.core`에 `MemberApp` 클래스 생성
+
+```java
+public class MemberApp {
+    public static void main(String[] args) {
+        MemberService memberService = new MemberServiceImpl();
+        Member member = new Member(1L, "memberA", Grade.VIP);
+        memberService.join(member);
+
+        Member findMember = memberService.findMember(1L);
+        System.out.println("member = " + member.getName());
+        System.out.println("findMember = " + findMember.getName());
+    }
+}
+```
+
+- `psvm` : main 함수 단축키
+- `soutv` : 변수 출력 단축키
+
+- `test/../hello.core`에 `member` 패키지 생성 후 `MemberServiceTest` 클래스 생성
+
+```java
+public class MemberServiceTest {
+
+    MemberService memberService = new MemberServiceImpl();
+
+    @Test
+    void join() {
+        //given
+        Member member = new Member(1L, "memberA", Grade.VIP);
+
+        //when
+        memberService.join(member);
+        Member findMember=memberService.findMember(1L);
+
+        //then
+        Assertions.assertThat(member).isEqualTo(findMember);
+    }
+}
+```
+
+### 회원 도메인 설계의 문제점
+
+- OCP, DIP를 잘 지키고 있을까?
+    
+    ```java
+    private final MemberRepository memberRepository = new MemoryMemberRepository();
+    ```
+    
+    - `MemberServiceImpl`의 변수 선언은 추상화, 구체화 모두 의존 → DIP 위반
+
+## 주문과 할인 도메인 설계
+
+- 주문과 할인 정책
+    - 회원이 상품을 주문
+    - 할인 정책 : VIP에 대해 고정 금액 할인(미확정, 추후 변경 가능)
+
+### 주문 도메인 협력, 역할, 책임
+
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap2-2%20(4).png)
+
+1. 주문 생성 : client가 주문 서비스에 주문 생성 요청
+2. 회원 조회 : `findById` 메소드로 회원 정보 조회
+3. 할인 적용 : 주문 서비스가 할인 여부를 할인 정책 역할에 위임함
+4. 주문 결과 반환 : 주문 서비스가 할인 결과를 포함한 주문 결과를 반환
+    - 실제로는 주문 데이터를 DB에 저장해야 하지만, 예제이기 때문에 반환만 함
+
+### 주문 도메인 설계
+
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap2-2%20(5).png)
+
+- 역할과 구현을 분리해서 설계함
+    - 구현 객체를 자유롭게 조립할 수 있음
+    - 회원 저장소, 할인 정책을 유연하게 변경할 수 있음
+
+### 주문 도메인 클래스 다이어그램
+
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap2-2%20(6).png)
+
+### 주문 도메인 객체 다이어그램 예시
+
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap2-2%20(7).png)
+![Untitled](https://github.com/siriyaoff/Spring-note/blob/main/Spring%20%EC%99%84%EC%A0%84%20%EC%A0%95%EB%B3%B5%20%EB%A1%9C%EB%93%9C%EB%A7%B5/images/Roadmap2-2%20(8).png)
+
+- interface들의 협력 관계를 그댇로 재사용할 수 있음
+
+## 주문과 할인 도메인 개발
+
+`hello.core`에 `discount` 패키지 생성 후 아래 파일들 구현
+
+- interface `DiscountPolicy`
+
+```java
+public interface DiscountPolicy {
+
+    /**
+     * @return 할인 대상 금액
+     */
+    int discount(Member member, int price);
+}
+```
+
+- class `FixDiscountPolicy`
+
+```java
+public class FixDiscountPolicy implements DiscountPolicy {
+
+    private int discountFixAmount = 1000;
+
+    @Override
+    public int discount(Member member, int price) {
+        if (member.getGrade() == Grade.VIP) {
+            return discountFixAmount;
+        } else {
+            return 0;
+        }
+    }
+}
+```
+
+`hello.core`에 `order` 패키지 생성 후 아래 파일들 구현
+
+- class `Order`
+    - constructor, getter and setter 정의
+
+```java
+public class Order {
+
+    private Long memberId;
+    private String itemName;
+    private int itemPrice;
+    private int discountPrice;
+
+		@Override
+    public String toString() {
+        return "Order{" +
+                "memberId=" + memberId +
+                ", itemName='" + itemName + '\'' +
+                ", itemPrice=" + itemPrice +
+                ", discountPrice=" + discountPrice +
+                '}';
+    }
+}
+```
+
+- interface `OrderService`
+
+```java
+public interface OrderService {
+    Order createOrder(Long memberId, String itemName, int itemPrice);
+}
+```
+
+- class `OrderServiceImpl`
+
+```java
+public class OrderServiceImpl implements OrderService {
+
+    private final MemberRepository memberRepository = new MemoryMemberRepository();
+    private final DiscountPolicy discountPolicy = new FixDiscountPolicy();
+
+    @Override
+    public Order createOrder(Long memberId, String itemName, int itemPrice) {
+        Member member = memberRepository.findById(memberId);
+        int discountPrice = discountPolicy.discount(member, itemPrice);
+
+        return new Order(memberId, itemName, itemPrice, discountPrice);
+    }
+}
+```
+
+- 할인에 관한 내용은 `discountPolicy`에서 알아서 해줌
+    - SRP(단일 책임 원칙)을 잘 지킨 예시
+
+## 주문과 할인 도메인 실행과 테스트
+
+- `hello.core`에 class `OrderApp` 생성
+
+```java
+public class OrderApp {
+
+    public static void main(String[] args) {
+        MemberService memberService = new MemberServiceImpl();
+        OrderService orderService = new OrderServiceImpl();
+
+        Long memberId = 1L;
+        Member member = new Member(memberId, "memberA", Grade.VIP);
+        memberService.join(member);
+
+        Order order = orderService.createOrder(memberId, "itemA", 10000);
+
+        System.out.println("order = " + order);
+    }
+}
+```
+
+- 메인 코드에서 테스트
+
+- `test/../hello.core`에 `order` 패키지 생성 후 `OrderServiceTest` 클래스 생성
+
+```java
+public class OrderServiceTest {
+
+    MemberService memberService = new MemberServiceImpl();
+    OrderService orderService = new OrderServiceImpl();
+
+    @Test
+    void createOrder() {
+        Long memberId = 1L;
+        Member member = new Member(memberId, "memberA", Grade.VIP);
+        memberService.join(member);
+
+        Order order = orderService.createOrder(memberId, "itemA", 10000);
+        Assertions.assertThat(order.getDiscountPrice()).isEqualTo(1000);
+    }
+}
+```
+
+- `memberId`를 primitive로 정의하면 `null`을 넣을 수 없음
